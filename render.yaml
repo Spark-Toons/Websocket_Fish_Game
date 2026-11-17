@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: websocket-fish-game
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
