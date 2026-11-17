@@ -1,0 +1,853 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Little Fish Tank</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font: 16px/1.45 system-ui, sans-serif;
+      background: #06243a;
+      color: #eefaff;
+      --panel: #0c3852;
+      --line: #28566d;
+      --muted: #a7c7d4;
+      --accent: #82e1d1;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; padding: 24px; }
+    button, input { font: inherit; }
+    button {
+      border: 1px solid #34708a;
+      border-radius: 9px;
+      padding: 9px 13px;
+      background: #164a65;
+      color: inherit;
+      cursor: pointer;
+    }
+    button:hover:not(:disabled), button.active { background: #216783; border-color: var(--accent); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    input {
+      border: 1px solid #34708a;
+      border-radius: 8px;
+      padding: 9px 11px;
+      background: #082c42;
+      color: inherit;
+    }
+    input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    .app { width: min(1120px, 100%); margin: 0 auto; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 16px; }
+    h1 { margin: 0; font-size: clamp(1.35rem, 3vw, 2rem); letter-spacing: .02em; }
+    .subtitle { margin: 3px 0 0; color: var(--muted); font-size: .92rem; }
+    .connection { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: .9rem; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #81939d; }
+    .dot.online { background: #69e5ae; box-shadow: 0 0 12px #69e5ae88; }
+
+    .room-card { padding: 10px; border: 1px solid #39718a; border-radius: 17px; background: #0a334c; box-shadow: 0 16px 50px #00131d77; }
+    .tank {
+      position: relative;
+      overflow: hidden;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      min-height: 310px;
+      border: 5px solid #8cc8d2;
+      border-radius: 12px;
+      background: #087ba5 url("/fish-assets/ocean.png") center / cover no-repeat;
+      box-shadow: inset 0 0 32px #052d4c, 0 0 0 3px #4f9baa;
+      touch-action: none;
+    }
+    .tank canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+    #drawing-canvas { pointer-events: none; }
+    #drawing-canvas.enabled { pointer-events: auto; cursor: crosshair; }
+    .room-hint {
+      position: absolute;
+      z-index: 1;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 5px 10px;
+      border: 1px solid #b5f2e966;
+      border-radius: 999px;
+      background: #06364eb8;
+      color: #e4ffff;
+      font-size: .8rem;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; padding: 13px 3px 3px; }
+    .controls .spacer { flex: 1; }
+    .brush-color { width: 42px; height: 40px; padding: 4px; cursor: pointer; }
+    .brush-size-control { display: flex; align-items: center; gap: 7px; margin: 0; font-size: .9rem; }
+    .brush-size { width: 110px; padding: 0; accent-color: var(--accent); }
+    .brush-size-control output { min-width: 3.2em; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .move-pad { display: grid; grid-template-columns: repeat(3, 35px); gap: 3px; }
+    .move-pad button { padding: 3px; touch-action: none; }
+    .move-pad button:nth-child(1) { grid-column: 2; }
+    .move-pad button:nth-child(2) { grid-column: 1; }
+    .move-pad button:nth-child(3) { grid-column: 2; }
+    .move-pad button:nth-child(4) { grid-column: 3; grid-row: 2; }
+    .instructions { margin: 10px 4px 2px; color: var(--muted); font-size: .85rem; }
+    .bottom { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; margin-top: 15px; }
+    .panel { min-width: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+    .chat-panel { display: flex; min-height: 210px; flex-direction: column; padding: 12px; }
+    .panel h2 { margin: 0 0 9px; font-size: 1rem; }
+    #chat-log { display: flex; flex: 1; flex-direction: column; gap: 7px; min-height: 115px; max-height: 190px; overflow-y: auto; padding: 0; margin: 0 0 10px; list-style: none; }
+    #chat-log li { overflow-wrap: anywhere; color: #e4f6fb; }
+    #chat-log .name { color: var(--accent); font-weight: 700; }
+    .chat-form { display: flex; gap: 8px; }
+    .chat-form input { min-width: 0; flex: 1; }
+    .sidebar { display: grid; grid-template-rows: auto 1fr; gap: 12px; }
+    .join-panel, .people-panel { padding: 12px; }
+    .join-form { display: flex; gap: 8px; }
+    .join-form input { min-width: 0; flex: 1; }
+    #people-count { color: var(--muted); font-size: .85rem; }
+    #people { display: flex; flex-wrap: wrap; gap: 6px; padding: 0; margin: 8px 0 0; list-style: none; }
+    #people li { border-radius: 999px; padding: 4px 9px; background: #17506a; color: #e5faff; font-size: .82rem; }
+    #status { min-height: 1.3em; margin: 8px 2px 0; color: var(--muted); font-size: .8rem; }
+
+    @media (max-width: 740px) {
+      body { padding: 14px; }
+      header { align-items: flex-start; }
+      .bottom { grid-template-columns: 1fr; }
+      .sidebar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto; }
+      .tank { min-height: 270px; aspect-ratio: 4 / 3; }
+      .connection { font-size: .78rem; }
+    }
+    @media (max-width: 480px) {
+      .sidebar { grid-template-columns: 1fr; }
+      .room-hint { font-size: .72rem; }
+      .controls { gap: 6px; }
+      button { padding: 8px 10px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <div>
+        <h1>Little Fish Tank</h1>
+        <p class="subtitle">A tiny room to swim, say hi, and doodle together.</p>
+      </div>
+      <div class="connection"><span id="connection-dot" class="dot"></span><span id="connection-label">Connecting...</span></div>
+    </header>
+
+    <section class="room-card" aria-label="Aquarium room">
+      <div class="tank" id="tank">
+        <div class="room-hint">Move with WASD or arrow keys · click to swim · press Draw to doodle</div>
+        <canvas id="world-canvas" aria-label="Fish tank with walkable fish"></canvas>
+        <canvas id="drawing-canvas" aria-label="Shared drawing canvas"></canvas>
+      </div>
+      <div class="controls">
+        <button id="draw-button" type="button" aria-pressed="false">✎ Draw</button>
+        <label for="brush-color" class="sr-only">Drawing color</label>
+        <input id="brush-color" class="brush-color" type="color" value="#ffe47a" title="Drawing color">
+        <label class="brush-size-control" for="brush-size">
+          Pen size
+          <input id="brush-size" class="brush-size" type="range" min="2" max="20" step="1" value="4" aria-label="Pen size">
+          <output id="brush-size-value" for="brush-size">4 px</output>
+        </label>
+        <button id="erase-button" type="button" aria-pressed="false">Eraser</button>
+        <button id="clear-drawing" type="button">Clear doodles</button>
+        <div class="move-pad" role="group" aria-label="Swim controls">
+          <button type="button" data-move="ArrowUp" aria-label="Swim up">↑</button>
+          <button type="button" data-move="ArrowLeft" aria-label="Swim left">←</button>
+          <button type="button" data-move="ArrowDown" aria-label="Swim down">↓</button>
+          <button type="button" data-move="ArrowRight" aria-label="Swim right">→</button>
+        </div>
+        <span class="spacer"></span>
+        <label for="server-url">Server</label>
+        <input id="server-url" type="url" aria-label="WebSocket server URL" style="width:min(270px, 48vw)" hidden>
+        <span id="room-name">Room: aquarium</span>
+      </div>
+      <p class="instructions">Drawing is shared on its own channel. When you finish doodling, press Draw again or use a movement key to swim.</p>
+    </section>
+
+    <section class="bottom">
+      <div class="panel chat-panel">
+        <h2>Tank chat</h2>
+        <ul id="chat-log" aria-live="polite"></ul>
+        <form id="chat-form" class="chat-form">
+          <input id="chat-message" maxlength="240" placeholder="Say something nice..." autocomplete="off" disabled>
+          <button id="send-chat" type="submit" disabled>Send</button>
+        </form>
+      </div>
+      <aside class="sidebar">
+        <div class="panel join-panel">
+          <h2>Join the tank</h2>
+          <form id="join-form" class="join-form">
+            <input id="player-name" maxlength="20" value="Little Fish" aria-label="Your fish name" autocomplete="nickname">
+            <button id="join-button" type="submit">Join</button>
+          </form>
+          <p id="status" role="status" aria-live="polite">Connecting to the aquarium...</p>
+        </div>
+        <div class="panel people-panel">
+          <h2>Swimming around <span id="people-count">(0)</span></h2>
+          <ul id="people"></ul>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const worldCanvas = document.querySelector("#world-canvas");
+    const drawingCanvas = document.querySelector("#drawing-canvas");
+    const world = worldCanvas.getContext("2d");
+    const ink = drawingCanvas.getContext("2d");
+    const tank = document.querySelector("#tank");
+    const status = document.querySelector("#status");
+    const connectionDot = document.querySelector("#connection-dot");
+    const connectionLabel = document.querySelector("#connection-label");
+    const joinForm = document.querySelector("#join-form");
+    const nameInput = document.querySelector("#player-name");
+    const joinButton = document.querySelector("#join-button");
+    const chatForm = document.querySelector("#chat-form");
+    const chatInput = document.querySelector("#chat-message");
+    const sendChatButton = document.querySelector("#send-chat");
+    const chatLog = document.querySelector("#chat-log");
+    const peopleList = document.querySelector("#people");
+    const drawButton = document.querySelector("#draw-button");
+    const colorInput = document.querySelector("#brush-color");
+    const brushSizeInput = document.querySelector("#brush-size");
+    const brushSizeValue = document.querySelector("#brush-size-value");
+    const eraseButton = document.querySelector("#erase-button");
+    const clearButton = document.querySelector("#clear-drawing");
+    const fishNames = {
+      clownfish: "Clownfish",
+      goldfish: "Goldfish",
+      fantail: "Fantail",
+      tang: "Yellow tang",
+      bass: "Sea bass",
+      "blue-cichlid": "Blue cichlid"
+    };
+    const fishPhotos = new Map();
+    const fishFacesLeft = new Set(["clownfish", "tang", "bass", "blue-cichlid"]);
+    const fishPhotoFiles = {
+      clownfish: "clownfish.png",
+      goldfish: "goldfish.png",
+      fantail: "fantail.png",
+      tang: "tang.png",
+      bass: "bass.png",
+      "blue-cichlid": "blue-cichlid.png"
+    };
+    for (const [fishType, filename] of Object.entries(fishPhotoFiles)) {
+      const photo = new Image();
+      photo.addEventListener("load", () => {
+        fishPhotos.set(fishType, prepareFishPhoto(photo, fishType));
+        render();
+      });
+      photo.addEventListener("error", () => setStatus(`Could not load the ${fishNames[fishType]} photo.`));
+      photo.src = `/fish-assets/${filename}`;
+    }
+
+    const players = new Map();
+    const strokes = [];
+    const keys = new Set();
+    let socket;
+    let selfId = null;
+    let localPlayer = null;
+    let drawing = false;
+    let erasing = false;
+    let isDrawing = false;
+    let lastPoint = null;
+    let swimTarget = null;
+    let lastMoveSent = 0;
+    let lastFrameTime = 0;
+
+    function resizeCanvas(canvas, context) {
+      const rect = tank.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function resize() {
+      resizeCanvas(worldCanvas, world);
+      resizeCanvas(drawingCanvas, ink);
+      redrawStrokes();
+      render();
+    }
+
+    function setStatus(message) {
+      status.textContent = message;
+    }
+
+    function updateBrushSize() {
+      brushSizeValue.value = `${brushSizeInput.value} px`;
+    }
+
+    function send(data) {
+      if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+      socket.send(JSON.stringify(data));
+      return true;
+    }
+
+    function getWebSocketUrl() {
+      const scheme = location.protocol === "https:" ? "wss:" : "ws:";
+      return `${scheme}//${location.host}/ws`;
+    }
+
+    function connect() {
+      if (socket && socket.readyState < WebSocket.CLOSING) return;
+      connectionLabel.textContent = "Connecting...";
+      connectionDot.classList.remove("online");
+      try {
+        socket = new WebSocket(getWebSocketUrl());
+      } catch (error) {
+        setStatus(`Could not connect: ${error.message}`);
+        connectionLabel.textContent = "Offline";
+        return;
+      }
+
+      socket.addEventListener("open", () => {
+        connectionLabel.textContent = "Connected";
+        connectionDot.classList.add("online");
+        setStatus("Choose a name and join the tank.");
+        joinButton.disabled = false;
+      });
+
+      socket.addEventListener("message", (event) => {
+        let message;
+        try {
+          message = JSON.parse(event.data);
+        } catch {
+          setStatus("The server sent an unreadable message.");
+          return;
+        }
+        handleServerMessage(message);
+      });
+
+      socket.addEventListener("close", () => {
+        connectionLabel.textContent = "Offline";
+        connectionDot.classList.remove("online");
+        setStatus("Disconnected. Refresh the page to try again.");
+        chatInput.disabled = true;
+        sendChatButton.disabled = true;
+        joinButton.disabled = true;
+      });
+
+      socket.addEventListener("error", () => {
+        connectionLabel.textContent = "Connection error";
+        setStatus("Could not reach the room server. Start it with node server.js.");
+      });
+    }
+
+    function handleServerMessage(message) {
+      if (message.channel === "room") {
+        if (message.type === "state") {
+          selfId = message.selfId;
+          players.clear();
+          for (const player of message.players) players.set(player.id, player);
+          localPlayer = players.get(selfId);
+          if (localPlayer) {
+            joinButton.textContent = "Joined";
+            joinButton.disabled = true;
+            nameInput.disabled = true;
+            chatInput.disabled = false;
+            sendChatButton.disabled = false;
+            setStatus(`You're swimming as ${localPlayer.name}, piloting a ${fishNames[localPlayer.fishType] || "fish"}.`);
+          }
+          renderPeople();
+        } else if (message.type === "player-joined") {
+          players.set(message.player.id, message.player);
+          renderPeople();
+          addNotice(`${message.player.name} joined the tank.`);
+        } else if (message.type === "player-left") {
+          const leaving = players.get(message.playerId);
+          players.delete(message.playerId);
+          renderPeople();
+          if (leaving) addNotice(`${leaving.name} swam away.`);
+        } else if (message.type === "move") {
+          const player = players.get(message.playerId);
+          if (player) {
+            player.x = message.x;
+            player.y = message.y;
+            player.direction = message.direction;
+          }
+        } else if (message.type === "chat") {
+          addChat(message.name, message.text);
+          showChatBubble(message.playerId, message.text);
+        } else if (message.type === "error") {
+          setStatus(message.message);
+        }
+      } else if (message.channel === "drawing") {
+        if (message.type === "snapshot") {
+          strokes.splice(0, strokes.length, ...message.strokes);
+          redrawStrokes();
+        } else if (message.type === "line" && message.playerId !== selfId) {
+          strokes.push(message.line);
+          if (strokes.length > 2000) strokes.shift();
+          drawLine(message.line);
+        } else if (message.type === "clear") {
+          strokes.length = 0;
+          clearInk();
+        }
+      }
+    }
+
+    function renderPeople() {
+      peopleList.replaceChildren();
+      for (const player of players.values()) {
+        const person = document.createElement("li");
+        person.textContent = `${player.name} · ${fishNames[player.fishType] || "Fish"}`;
+        peopleList.append(person);
+      }
+      document.querySelector("#people-count").textContent = `(${players.size})`;
+    }
+
+    function addChat(name, text) {
+      const item = document.createElement("li");
+      const nameLabel = document.createElement("span");
+      nameLabel.className = "name";
+      nameLabel.textContent = `${name}: `;
+      item.append(nameLabel, document.createTextNode(text));
+      chatLog.append(item);
+      chatLog.scrollTop = chatLog.scrollHeight;
+      while (chatLog.children.length > 100) chatLog.firstElementChild.remove();
+    }
+
+    function showChatBubble(playerId, text) {
+      const player = players.get(playerId);
+      if (!player) return;
+      player.chatBubble = text;
+      player.chatBubbleUntil = performance.now() + 4500;
+    }
+
+    function addNotice(text) {
+      const item = document.createElement("li");
+      item.textContent = text;
+      item.style.color = "#a7c7d4";
+      item.style.fontStyle = "italic";
+      chatLog.append(item);
+      chatLog.scrollTop = chatLog.scrollHeight;
+      while (chatLog.children.length > 100) chatLog.firstElementChild.remove();
+    }
+
+    function joinTank(event) {
+      event.preventDefault();
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        setStatus("Wait for the room server to connect.");
+        return;
+      }
+      if (localPlayer) return;
+      const name = nameInput.value.trim().slice(0, 20) || "Little Fish";
+      nameInput.value = name;
+      joinButton.disabled = true;
+      send({ channel: "room", type: "join", name });
+    }
+
+    function movePlayer(delta, now) {
+      if (!localPlayer || drawing) return;
+      let dx = 0;
+      let dy = 0;
+      if (keys.has("ArrowLeft") || keys.has("a")) dx--;
+      if (keys.has("ArrowRight") || keys.has("d")) dx++;
+      if (keys.has("ArrowUp") || keys.has("w")) dy--;
+      if (keys.has("ArrowDown") || keys.has("s")) dy++;
+      if (dx || dy) {
+        swimTarget = null;
+      } else if (swimTarget) {
+        dx = swimTarget.x - localPlayer.x;
+        dy = swimTarget.y - localPlayer.y;
+        if (Math.hypot(dx, dy) < .008) {
+          swimTarget = null;
+          return;
+        }
+      } else {
+        return;
+      }
+
+      const length = Math.hypot(dx, dy) || 1;
+      const speed = .38;
+      const distance = Math.min(speed * delta, length);
+      localPlayer.x = Math.max(.045, Math.min(.955, localPlayer.x + dx / length * distance));
+      localPlayer.y = Math.max(.12, Math.min(.91, localPlayer.y + dy / length * distance));
+      localPlayer.direction = directionFor(dx, dy);
+      if (now - lastMoveSent > 90) {
+        send({
+          channel: "room",
+          type: "move",
+          x: localPlayer.x,
+          y: localPlayer.y,
+          direction: localPlayer.direction
+        });
+        lastMoveSent = now;
+      }
+    }
+
+    function directionFor(dx, dy) {
+      const angle = Math.atan2(dy, dx);
+      return ((Math.round((angle + Math.PI) / (Math.PI * 2) * 6) % 6) + 6) % 6;
+    }
+
+    function drawBackground(width, height, time) {
+      world.clearRect(0, 0, width, height);
+      world.fillStyle = "#b5f5ff55";
+      for (let i = 0; i < 12; i++) {
+        const x = (i * 107 + 31) % width;
+        const y = (height - (time / (15 + i % 5) + i * 49) % (height + 30));
+        world.beginPath();
+        world.arc(x, y, 2 + i % 4, 0, Math.PI * 2);
+        world.fill();
+      }
+    }
+
+    function drawFish(player, width, height, time) {
+      const x = player.x * width;
+      const y = player.y * height + Math.sin(time / 450 + x) * 2;
+      const fishType = player.fishType || "clownfish";
+      const photo = fishPhotos.get(fishType) || fishPhotos.get("clownfish");
+      if (!photo) return;
+      const fishWidth = Math.max(56, Math.min(92, width * .12));
+      const fishHeight = fishWidth * photo.height / photo.width;
+      const dir = Number.isInteger(player.direction) ? player.direction : 1;
+      world.save();
+      world.translate(x, y);
+      const facesLeft = [0, 1, 5].includes(dir);
+      if (facesLeft !== fishFacesLeft.has(fishType)) world.scale(-1, 1);
+      world.drawImage(photo, -fishWidth / 2, -fishHeight / 2, fishWidth, fishHeight);
+      world.restore();
+
+      world.font = "600 12px system-ui, sans-serif";
+      world.textAlign = "center";
+      world.lineWidth = 3;
+      world.strokeStyle = "#06243add";
+      world.strokeText(player.name, x, y + fishHeight / 2 + 14);
+      world.fillStyle = "#f3fbff";
+      world.fillText(player.name, x, y + fishHeight / 2 + 14);
+      drawChatBubble(player, x, y, fishWidth, fishHeight, facesLeft, time, width);
+    }
+
+    function drawChatBubble(player, x, y, fishWidth, fishHeight, facesLeft, time, tankWidth) {
+      if (!player.chatBubble || time >= player.chatBubbleUntil) return;
+
+      world.save();
+      world.globalAlpha = Math.min(1, (player.chatBubbleUntil - time) / 450);
+      world.font = "600 13px system-ui, sans-serif";
+      world.textAlign = "left";
+      world.textBaseline = "middle";
+
+      const maxTextWidth = Math.min(210, Math.max(90, tankWidth * .5));
+      const words = player.chatBubble.split(/\s+/);
+      const lines = [];
+      let line = "";
+      for (const word of words) {
+        let part = "";
+        for (const character of [...word]) {
+          if (world.measureText(part + character).width > maxTextWidth) {
+            if (line) lines.push(line);
+            if (part) lines.push(part);
+            line = "";
+            part = character;
+          } else {
+            part += character;
+          }
+        }
+        const candidate = line ? `${line} ${part}` : part;
+        if (line && world.measureText(candidate).width > maxTextWidth) {
+          lines.push(line);
+          line = part;
+        } else {
+          line = candidate;
+        }
+      }
+      if (line) lines.push(line);
+      if (lines.length > 4) {
+        lines.length = 4;
+        let lastLine = lines[3];
+        while (lastLine && world.measureText(`${lastLine}…`).width > maxTextWidth) {
+          lastLine = lastLine.slice(0, -1);
+        }
+        lines[3] = `${lastLine.trimEnd()}…`;
+      }
+
+      const paddingX = 10;
+      const paddingY = 7;
+      const lineHeight = 16;
+      const bubbleWidth = Math.max(58, ...lines.map(text => world.measureText(text).width + paddingX * 2));
+      const bubbleHeight = lines.length * lineHeight + paddingY * 2;
+      const headX = x + (facesLeft ? -1 : 1) * fishWidth * .28;
+      const left = Math.max(4, Math.min(tankWidth - bubbleWidth - 4, headX - bubbleWidth / 2));
+      const top = Math.max(4, y - fishHeight / 2 - bubbleHeight - 15);
+      const radius = 9;
+      const tailX = Math.max(left + 15, Math.min(left + bubbleWidth - 15, headX));
+      const bottom = top + bubbleHeight;
+
+      world.beginPath();
+      world.moveTo(left + radius, top);
+      world.lineTo(left + bubbleWidth - radius, top);
+      world.quadraticCurveTo(left + bubbleWidth, top, left + bubbleWidth, top + radius);
+      world.lineTo(left + bubbleWidth, bottom - radius);
+      world.quadraticCurveTo(left + bubbleWidth, bottom, left + bubbleWidth - radius, bottom);
+      world.lineTo(tailX + 8, bottom);
+      world.lineTo(tailX, bottom + 9);
+      world.lineTo(tailX - 7, bottom);
+      world.lineTo(left + radius, bottom);
+      world.quadraticCurveTo(left, bottom, left, bottom - radius);
+      world.lineTo(left, top + radius);
+      world.quadraticCurveTo(left, top, left + radius, top);
+      world.closePath();
+      world.fillStyle = "#f4fbff";
+      world.strokeStyle = "#17445a";
+      world.lineWidth = 1.5;
+      world.fill();
+      world.stroke();
+
+      world.fillStyle = "#123847";
+      lines.forEach((text, index) => {
+        world.fillText(text, left + paddingX, top + paddingY + lineHeight * (index + .5));
+      });
+      world.restore();
+    }
+
+    function prepareFishPhoto(image, fishType) {
+      const source = document.createElement("canvas");
+      source.width = image.naturalWidth;
+      source.height = image.naturalHeight;
+      const context = source.getContext("2d", { willReadFrequently: true });
+      context.drawImage(image, 0, 0);
+      const pixels = context.getImageData(0, 0, source.width, source.height);
+
+      if (["clownfish", "fantail", "blue-cichlid"].includes(fishType)) {
+        const { data } = pixels;
+        const width = source.width;
+        const height = source.height;
+        const visited = new Uint8Array(width * height);
+        const queue = new Uint32Array(width * height);
+        let head = 0;
+        let tail = 0;
+        const isBackground = index => {
+          const offset = index * 4;
+          const red = data[offset];
+          const green = data[offset + 1];
+          const blue = data[offset + 2];
+          return data[offset + 3] > 0
+            && Math.max(red, green, blue) - Math.min(red, green, blue) < 22
+            && (red + green + blue) / 3 > 185;
+        };
+        const addBackground = index => {
+          if (visited[index] || !isBackground(index)) return;
+          visited[index] = 1;
+          queue[tail++] = index;
+        };
+
+        for (let x = 0; x < width; x++) {
+          addBackground(x);
+          addBackground((height - 1) * width + x);
+        }
+        for (let y = 1; y < height - 1; y++) {
+          addBackground(y * width);
+          addBackground(y * width + width - 1);
+        }
+        while (head < tail) {
+          const index = queue[head++];
+          const x = index % width;
+          if (x > 0) addBackground(index - 1);
+          if (x < width - 1) addBackground(index + 1);
+          if (index >= width) addBackground(index - width);
+          if (index < width * (height - 1)) addBackground(index + width);
+        }
+        for (let index = 0; index < visited.length; index++) {
+          if (visited[index]) data[index * 4 + 3] = 0;
+        }
+      }
+
+      const { data } = pixels;
+      let left = source.width;
+      let right = -1;
+      let top = source.height;
+      let bottom = -1;
+      for (let y = 0; y < source.height; y++) {
+        for (let x = 0; x < source.width; x++) {
+          if (data[(y * source.width + x) * 4 + 3] < 16) continue;
+          left = Math.min(left, x);
+          right = Math.max(right, x);
+          top = Math.min(top, y);
+          bottom = Math.max(bottom, y);
+        }
+      }
+      if (right < left || bottom < top) return source;
+
+      const photo = document.createElement("canvas");
+      photo.width = right - left + 1;
+      photo.height = bottom - top + 1;
+      photo.getContext("2d").putImageData(pixels, -left, -top);
+      return photo;
+    }
+
+    function render(time = 0) {
+      const width = tank.clientWidth;
+      const height = tank.clientHeight;
+      drawBackground(width, height, time);
+      for (const player of players.values()) drawFish(player, width, height, time);
+    }
+
+    function animate(now) {
+      const delta = Math.min((now - lastFrameTime) / 1000 || 0, .05);
+      lastFrameTime = now;
+      movePlayer(delta, now);
+      render(now);
+      requestAnimationFrame(animate);
+    }
+
+    function clearInk() {
+      ink.clearRect(0, 0, tank.clientWidth, tank.clientHeight);
+    }
+
+    function drawLine(line) {
+      const width = tank.clientWidth;
+      const height = tank.clientHeight;
+      ink.strokeStyle = line.color;
+      ink.lineWidth = line.size * Math.min(width, height);
+      ink.lineCap = "round";
+      ink.lineJoin = "round";
+      ink.save();
+      ink.globalCompositeOperation = line.mode === "erase" ? "destination-out" : "source-over";
+      ink.beginPath();
+      ink.moveTo(line.from.x * width, line.from.y * height);
+      ink.lineTo(line.to.x * width, line.to.y * height);
+      ink.stroke();
+      ink.restore();
+    }
+
+    function redrawStrokes() {
+      clearInk();
+      for (const line of strokes) drawLine(line);
+    }
+
+    function pointFromEvent(event) {
+      const rect = drawingCanvas.getBoundingClientRect();
+      return {
+        x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
+        y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height))
+      };
+    }
+
+    function onPointerDown(event) {
+      if (drawing) {
+        isDrawing = true;
+        lastPoint = pointFromEvent(event);
+        drawingCanvas.setPointerCapture(event.pointerId);
+        event.preventDefault();
+        return;
+      }
+      if (!localPlayer) return;
+      const rect = tank.getBoundingClientRect();
+      const dx = event.clientX - rect.left - localPlayer.x * rect.width;
+      const dy = event.clientY - rect.top - localPlayer.y * rect.height;
+      swimTarget = {
+        x: Math.max(.045, Math.min(.955, (event.clientX - rect.left) / rect.width)),
+        y: Math.max(.12, Math.min(.91, (event.clientY - rect.top) / rect.height))
+      };
+      if (Math.hypot(dx, dy) > 0) localPlayer.direction = directionFor(dx, dy);
+    }
+
+    function onPointerMove(event) {
+      if (!isDrawing || !lastPoint) return;
+      const point = pointFromEvent(event);
+      const line = {
+        from: lastPoint,
+        to: point,
+        color: colorInput.value,
+        size: Number(brushSizeInput.value) / Math.min(tank.clientWidth, tank.clientHeight),
+        mode: erasing ? "erase" : "pen"
+      };
+      strokes.push(line);
+      if (strokes.length > 2000) strokes.shift();
+      drawLine(line);
+      send({ channel: "drawing", type: "line", line });
+      lastPoint = point;
+    }
+
+    joinForm.addEventListener("submit", joinTank);
+
+    chatForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const text = chatInput.value.trim();
+      if (!text || !localPlayer) return;
+      if (!send({ channel: "room", type: "chat", text })) {
+        setStatus("Couldn't send your message. Check the room connection and try again.");
+        return;
+      }
+      chatInput.value = "";
+      chatInput.focus();
+    });
+
+    function setDrawing(enabled) {
+      drawing = enabled;
+      drawButton.classList.toggle("active", drawing);
+      drawButton.setAttribute("aria-pressed", String(drawing));
+      drawingCanvas.classList.toggle("enabled", drawing);
+      drawButton.textContent = drawing ? "✕ Stop drawing" : "✎ Draw";
+    }
+
+    drawButton.addEventListener("click", () => setDrawing(!drawing));
+    brushSizeInput.addEventListener("input", updateBrushSize);
+    eraseButton.addEventListener("click", () => {
+      erasing = !erasing;
+      eraseButton.classList.toggle("active", erasing);
+      eraseButton.setAttribute("aria-pressed", String(erasing));
+    });
+
+    clearButton.addEventListener("click", () => {
+      if (!localPlayer) {
+        setStatus("Join the tank before clearing its doodles.");
+        return;
+      }
+      strokes.length = 0;
+      clearInk();
+      send({ channel: "drawing", type: "clear" });
+    });
+
+    drawingCanvas.addEventListener("pointerdown", onPointerDown);
+    drawingCanvas.addEventListener("pointermove", onPointerMove);
+    drawingCanvas.addEventListener("pointerup", () => {
+      isDrawing = false;
+      lastPoint = null;
+    });
+    drawingCanvas.addEventListener("pointercancel", () => {
+      isDrawing = false;
+      lastPoint = null;
+    });
+    tank.addEventListener("pointerdown", (event) => {
+      if (!drawing) onPointerDown(event);
+    });
+
+    window.addEventListener("keydown", (event) => {
+      const target = event.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
+      const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+      if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "w", "a", "s", "d"].includes(key)) {
+        if (drawing) setDrawing(false);
+        keys.add(key);
+        event.preventDefault();
+      }
+    });
+    window.addEventListener("keyup", (event) => {
+      const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+      keys.delete(key);
+    });
+    window.addEventListener("blur", () => keys.clear());
+    document.querySelectorAll("[data-move]").forEach((button) => {
+      const key = button.dataset.move;
+      button.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        swimTarget = null;
+        keys.add(key);
+        button.setPointerCapture(event.pointerId);
+      });
+      const stopMoving = () => keys.delete(key);
+      button.addEventListener("pointerup", stopMoving);
+      button.addEventListener("pointercancel", stopMoving);
+      button.addEventListener("lostpointercapture", stopMoving);
+    });
+    window.addEventListener("resize", resize);
+    resize();
+    requestAnimationFrame(animate);
+    connect();
+  </script>
+</body>
+</html>
